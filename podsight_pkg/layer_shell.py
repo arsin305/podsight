@@ -157,9 +157,26 @@ class _Thumb(Gtk.Window):
         self.connect("leave-notify-event", self._on_leave)
 
     def set_pos(self, x, y):
+        # x, y are global desktop coordinates (all monitors). Layer-shell
+        # margins are relative to one output, so pin the surface to the
+        # monitor containing (x, y) and subtract that monitor's origin.
+        # Without this, a thumbnail at x >= first monitor width lands
+        # off-screen (local patch for arsin305/podsight#7).
         self._mx, self._my = x, y
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, x)
-        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, y)
+        lx, ly = x, y
+        try:
+            disp = Gdk.Display.get_default()
+            mon = disp.get_monitor_at_point(x, y) if disp else None
+        except Exception:
+            mon = None
+        if mon is not None:
+            g = mon.get_geometry()
+            lx, ly = max(0, x - g.x), max(0, y - g.y)
+            if mon is not getattr(self, "_mon", None):
+                self._mon = mon
+                GtkLayerShell.set_monitor(self, mon)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.LEFT, lx)
+        GtkLayerShell.set_margin(self, GtkLayerShell.Edge.TOP, ly)
 
     def set_frame(self, w, h, rs, data):
         # new_from_bytes() wraps data in a GLib.Bytes that the pixbuf keeps
